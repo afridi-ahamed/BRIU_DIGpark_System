@@ -1,0 +1,36 @@
+# Django
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+media/
+staticfiles/
+static/
+\env
+.env
+*.env
+*.log
+
+# Local database and virtual environment
+db.sqlite3
+*.sqlite3
+ .venv/
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Python virtualenv
+venv/
+ENV/
+env/
+
+profile_pics
+ticket_messages
+seed_university_data.py
+university_members_export.xlsx
+university_members_report.pdf

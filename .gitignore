@@ -1,0 +1,7 @@
+     Backend/.env
+     Backend/db.sqlite3
+     Backend/.venv/
+     Frontend/node_modules/
+     .idea/
+     __pycache__/
+     *.py[cod]
