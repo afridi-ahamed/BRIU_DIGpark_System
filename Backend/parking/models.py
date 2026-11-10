@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 from users.models import CustomUser, UniversityMember
@@ -22,7 +23,8 @@ class ParkingLot(models.Model):
     total_capacity = models.PositiveIntegerField(default=0, help_text="Total number of vehicles this lot can hold (e.g., 40)")
     @property
     def current_occupied(self):
-        return self.bookings.filter(status='active').count()
+        now = timezone.now()
+        return self.bookings.filter(status='active', start_time__lte=now, end_time__gt=now).count()
     
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='created_lots')
@@ -80,8 +82,27 @@ class Booking(models.Model):
         if self.status == 'active':
             if not self.parking_lot.is_active:
                 raise ValidationError("This parking lot is currently inactive.")
-            if self.parking_lot.current_occupied >= self.parking_lot.total_capacity:
-                raise ValidationError(f"No space available in {self.parking_lot.name}.")
+            if not self.start_time or not self.end_time or self.end_time <= self.start_time:
+                raise ValidationError("A valid start and end time are required.")
+            local_start = timezone.localtime(self.start_time)
+            local_end = timezone.localtime(self.end_time)
+            if local_start.date() != local_end.date():
+                raise ValidationError("Bookings must start and end on the same day.")
+            overlaps = Booking.objects.filter(
+                parking_lot=self.parking_lot,
+                status='active',
+                start_time__lt=self.end_time,
+                end_time__gt=self.start_time,
+            ).exclude(pk=self.pk)
+            events = [(self.start_time, 1), (self.end_time, -1)]
+            for booking in overlaps:
+                events.extend(((max(booking.start_time, self.start_time), 1),
+                               (min(booking.end_time, self.end_time), -1)))
+            occupied = 0
+            for _, change in sorted(events, key=lambda event: (event[0], event[1])):
+                occupied += change
+                if occupied > self.parking_lot.total_capacity:
+                    raise ValidationError(f"No space available in {self.parking_lot.name} for this time.")
 
     def save(self, *args, **kwargs):
         self.clean()

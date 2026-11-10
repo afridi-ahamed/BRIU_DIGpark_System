@@ -7,8 +7,14 @@ import { verifyUniversityMember, createBooking, exitVehicle } from '../../servic
 import { useToast } from '../../context/ToastContext';
 
 
-const buildBookingTimes = (durationHours) => {
-  const now = new Date();
+const localInputValue = (date) => { const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+const earliestStart = () => new Date(Math.ceil((Date.now() + 60000) / 60000) * 60000);
+const latestStart = () => new Date(Date.now() + 8 * 60 * 60 * 1000);
+const localDayEnd = () => { const d = new Date(); d.setHours(23, 59, 0, 0); return d; };
+const latestAllowedStart = () => localInputValue(latestStart()) < localInputValue(localDayEnd()) ? latestStart() : localDayEnd();
+const todayAtTime = (time) => `${localInputValue(new Date()).slice(0, 10)}T${time}`;
+const buildBookingTimes = (durationHours, startValue) => {
+  const now = new Date(startValue);
   return {
     start_time: now.toISOString(),
     end_time: new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString(),
@@ -27,6 +33,7 @@ export default function EntryLogPanel({ bookings, lots, onBookingCreated, onVehi
   const { toast } = useToast();
   const [tab, setTab] = useState('entry');
   const [durationHours, setDurationHours] = useState(2);
+  const [startTime, setStartTime] = useState(() => localInputValue(earliestStart()));
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const notifiedOverdueRef = useRef(new Set());
 
@@ -44,8 +51,8 @@ export default function EntryLogPanel({ bookings, lots, onBookingCreated, onVehi
   const [exiting, setExiting] = useState(false);
 
   const activeLots = lots.filter(l => l.is_active);
-  const activeBookings = bookings.filter(b => b.status === 'active');
-  const overdueBookings = activeBookings.filter(b => b.end_time && new Date(b.end_time) <= currentTime);
+  const activeBookings = bookings.filter(b => b.status === 'active' && new Date(b.start_time) <= currentTime && b.end_time && new Date(b.end_time) > currentTime);
+  const overdueBookings = bookings.filter(b => b.status === 'active' && new Date(b.start_time) <= currentTime && b.end_time && new Date(b.end_time) <= currentTime);
 
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 30000);
@@ -83,10 +90,13 @@ export default function EntryLogPanel({ bookings, lots, onBookingCreated, onVehi
     if (!member) { setVerifyErr('Verify university ID first.'); return; }
     const lot = lots.find(l => l.id === parseInt(lotId));
     if (!lot) return;
-    if (lot.available_spots <= 0) { toast.warning(`${lot.name} is full — choose another lot.`); return; }
     setBooking(true);
     try {
-      const times = buildBookingTimes(durationHours);
+      const times = buildBookingTimes(durationHours, startTime);
+      if (new Date(times.start_time) < new Date() || new Date(times.start_time).toDateString() !== new Date().toDateString() || new Date(times.end_time).toDateString() !== new Date(times.start_time).toDateString()) {
+        toast.error('Choose a future start and end time today.');
+        return;
+      }
       const res = await createBooking({ parking_lot: parseInt(lotId), university_id: member.university_id, vehicle_number: plate.trim(), ...times });
       onBookingCreated(res.booking, member.full_name);
       const lotType = lot.lot_type ? ` (${lot.lot_type.charAt(0).toUpperCase() + lot.lot_type.slice(1)})` : '';
@@ -225,6 +235,11 @@ export default function EntryLogPanel({ bookings, lots, onBookingCreated, onVehi
 
                 {/* Parking duration */}
                 <div className="field">
+                  <label className="label" htmlFor="booking-start-time">Starting time (today)</label>
+                  <input id="booking-start-time" type="time" className="input" value={new Date(startTime).toTimeString().slice(0, 5)} min={localInputValue(earliestStart()).slice(11, 16)} max={localInputValue(latestAllowedStart()).slice(11, 16)} required onChange={e => setStartTime(todayAtTime(e.target.value))} />
+                  <p className="mt-1 text-[11px] text-[var(--text-muted)]">Start time can be set up to 8 hours ahead.</p>
+                </div>
+                <div className="field">
                   <label className="label" htmlFor="booking-duration">Parking Duration</label>
                   <select id="booking-duration" className="input" value={durationHours}
                     onChange={e => setDurationHours(Number(e.target.value))}>
@@ -233,7 +248,7 @@ export default function EntryLogPanel({ bookings, lots, onBookingCreated, onVehi
                     ))}
                   </select>
                   <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                    Scheduled to end at {formatDateTime(new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString())}
+                    Scheduled to end at {formatDateTime(new Date(new Date(startTime).getTime() + durationHours * 60 * 60 * 1000).toISOString())}
                   </p>
                 </div>
 

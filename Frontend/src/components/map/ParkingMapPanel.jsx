@@ -2,16 +2,33 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wifi } from 'lucide-react';
 
-const buildSlotGrid = (lot) => {
+const formatTime = (value) => new Date(value).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+const buildSlotGrid = (lot, bookings = []) => {
+  const now = Date.now();
+  const lotBookings = bookings
+    .filter(booking => booking.parking_lot === lot.id
+      && booking.status === 'active'
+      && booking.end_time
+      && new Date(booking.end_time).getTime() > now)
+    .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
   const slots = [];
   for (let i = 0; i < lot.total_capacity; i++) {
     const num = String(i + 1).padStart(2, '0');
-    slots.push({ id: `${lot.id}-${num}`, num, occupied: i < lot.current_occupied });
+    const booking = lotBookings[i];
+    const startsAt = booking ? new Date(booking.start_time).getTime() : Infinity;
+    slots.push({
+      id: `${lot.id}-${num}`,
+      num,
+      booking,
+      state: !booking ? 'free' : startsAt <= now ? 'occupied' : 'reserved',
+    });
   }
   return slots;
 };
 
-export default function ParkingMapPanel({ lots, sensorEvent }) {
+export default function ParkingMapPanel({ lots, bookings, sensorEvent }) {
   const [activeIdx, setActiveIdx] = useState(0);
 
   if (!lots || lots.length === 0) {
@@ -31,7 +48,7 @@ export default function ParkingMapPanel({ lots, sensorEvent }) {
   }
 
   const lot = lots[activeIdx] || lots[0];
-  const slots = buildSlotGrid(lot);
+  const slots = buildSlotGrid(lot, bookings);
   const freeCount = lot.available_spots;
   const occupiedCount = lot.current_occupied;
   const fillPct = lot.total_capacity > 0 ? Math.round((occupiedCount / lot.total_capacity) * 100) : 0;
@@ -142,6 +159,9 @@ export default function ParkingMapPanel({ lots, sensorEvent }) {
               <span className="flex items-center gap-1.5 text-[10px] font-[600] text-[var(--text-muted)]">
                 <span className="w-2 h-2 rounded-sm inline-block" style={{ background: '#F87171' }} /> Taken
               </span>
+              <span className="flex items-center gap-1.5 text-[10px] font-[600] text-[var(--text-muted)]">
+                <span className="w-2 h-2 rounded-sm inline-block" style={{ background: '#FBBF24' }} /> Reserved
+              </span>
             </div>
           </div>
 
@@ -150,26 +170,43 @@ export default function ParkingMapPanel({ lots, sensorEvent }) {
           ) : (
             <div className="grid grid-cols-8 gap-1.5 max-h-[600px] overflow-y-auto custom-scrollbar">
               {slots.map((slot) => (
+                (() => {
+                  const colors = slot.state === 'occupied'
+                    ? { background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#F87171' }
+                    : slot.state === 'reserved'
+                      ? { background: 'rgba(251,191,36,0.12)', borderColor: 'rgba(251,191,36,0.3)', color: '#FBBF24' }
+                      : { background: 'rgba(52,211,153,0.08)', borderColor: 'rgba(52,211,153,0.2)', color: '#34D399' };
+                  const timeInfo = slot.booking
+                    ? `${formatTime(slot.booking.start_time)}–${formatTime(slot.booking.end_time)}`
+                    : 'Free';
+                  return (
                 <motion.div
                   key={slot.id}
                   initial={{ opacity: 0, scale: 0.7 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ type: 'spring', stiffness: 350, damping: 24 }}
-                  title={`Space ${slot.num} — ${slot.occupied ? 'Occupied' : 'Free'}`}
+                  title={`Space ${slot.num} — ${slot.state === 'occupied' ? `Occupied, free at ${formatTime(slot.booking.end_time)}` : slot.state === 'reserved' ? `Reserved from ${formatTime(slot.booking.start_time)}` : 'Free'}${slot.booking ? ` · ${slot.booking.university_member_name} · ${timeInfo}` : ''}`}
                   className="aspect-square rounded-[6px] flex items-center justify-center border relative overflow-hidden"
                   style={{
-                    background: slot.occupied ? 'rgba(248,113,113,0.12)' : 'rgba(52,211,153,0.08)',
-                    borderColor: slot.occupied ? 'rgba(248,113,113,0.3)' : 'rgba(52,211,153,0.2)',
-                    boxShadow: slot.occupied
-                      ? '0 0 6px rgba(248,113,113,0.15)'
+                    background: colors.background,
+                    borderColor: colors.borderColor,
+                    boxShadow: slot.state !== 'free'
+                      ? `0 0 6px ${colors.color}26`
                       : 'none',
                   }}
                 >
-                  <span className="text-[8px] font-[700]"
-                    style={{ color: slot.occupied ? '#F87171' : '#34D399' }}>
-                    {slot.num}
-                  </span>
+                  <div className="flex flex-col items-center leading-tight">
+                    <span className="text-[8px] font-[700]" style={{ color: colors.color }}>{slot.num}</span>
+                    {slot.booking && (
+                      <span className="mt-0.5 text-[9px] font-bold" style={{ color: colors.color }}>
+                        <span className="block">{slot.state === 'occupied' ? 'FREE AT' : 'STARTS'}</span>
+                        <span className="block text-[10px]">{formatTime(slot.state === 'occupied' ? slot.booking.end_time : slot.booking.start_time)}</span>
+                      </span>
+                    )}
+                  </div>
                 </motion.div>
+                  );
+                })()
               ))}
             </div>
           )}

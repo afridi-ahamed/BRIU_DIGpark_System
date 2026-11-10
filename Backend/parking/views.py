@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.core.mail import send_mail
 from django.conf import settings
 from django.template.loader import render_to_string
@@ -20,6 +21,14 @@ from .serializers import (
 )
 from users.models import UniversityMember
 from users.permissions import IsSuperAdminOrReadOnly, IsSuperAdmin, IsStaffOrSuperAdmin
+
+
+def reset_previous_day_bookings():
+    today = timezone.localdate()
+    Booking.objects.filter(status='active').filter(
+        Q(end_time__date__lt=today)
+        | Q(end_time__isnull=True, start_time__date__lt=today)
+    ).update(status='completed', updated_at=timezone.now())
 
 
 # ====================== PARKING LOT MANAGEMENT (Superadmin Only) ======================
@@ -90,6 +99,7 @@ class BookingListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        reset_previous_day_bookings()
         if request.user.role == 'member':
             if not request.user.university_member_id:
                 return Response({"error": "This login is not linked to a university member."}, status=status.HTTP_403_FORBIDDEN)
@@ -102,12 +112,15 @@ class BookingListCreateView(APIView):
 
     @transaction.atomic
     def post(self, request):
+        reset_previous_day_bookings()
         serializer = BookingCreateSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         parking_lot = serializer.validated_data['parking_lot']
         vehicle_number = serializer.validated_data.get('vehicle_number', '')
+        start_time = serializer.validated_data['start_time']
+        end_time = serializer.validated_data['end_time']
         if request.user.role == 'member':
             if not request.user.university_member_id:
                 return Response({"error": "This login is not linked to a university member."}, status=status.HTTP_403_FORBIDDEN)
@@ -123,7 +136,10 @@ class BookingListCreateView(APIView):
         existing_active = (
             Booking.objects
             .select_related('parking_lot')
-            .filter(university_member=member, status='active')
+            .filter(
+                university_member=member, status='active',
+                end_time__gt=timezone.now(),
+            )
             .order_by('-created_at')
             .first()
         )
@@ -139,13 +155,7 @@ class BookingListCreateView(APIView):
             return Response({"error": "This parking lot is currently inactive"},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        if parking_lot.current_occupied >= parking_lot.total_capacity:
-            return Response({"error": f"No space available in {parking_lot.name}."},
-                            status=status.HTTP_400_BAD_REQUEST)
-
         exit_token = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        start_time = timezone.now()
-        end_time = serializer.validated_data.get('end_time')
 
         booking = Booking(
             created_by=request.user,

@@ -8,6 +8,12 @@ const durations = [1, 2, 4, 8, 12, 24];
 const dateTime = (value) => value
   ? new Date(value).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
   : 'Not set';
+const localInputValue = (date) => { const d = new Date(date.getTime() - date.getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+const earliestStart = () => new Date(Math.ceil((Date.now() + 60000) / 60000) * 60000);
+const latestStart = () => new Date(Date.now() + 8 * 60 * 60 * 1000);
+const endOfToday = () => { const d = new Date(); d.setHours(23, 59, 0, 0); return localInputValue(d); };
+const inputTime = (date) => localInputValue(date).slice(11, 16);
+const todayAtTime = (time) => `${localInputValue(new Date()).slice(0, 10)}T${time}`;
 
 export default function MemberPortalPage() {
   const { user } = useAuth();
@@ -16,6 +22,7 @@ export default function MemberPortalPage() {
   const [bookings, setBookings] = useState([]);
   const [lotId, setLotId] = useState('');
   const [durationHours, setDurationHours] = useState(2);
+  const [startTime, setStartTime] = useState(() => localInputValue(earliestStart()));
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -40,14 +47,19 @@ export default function MemberPortalPage() {
     return () => window.clearInterval(timer);
   }, [fetchPortalData]);
 
-  const activeBooking = bookings.find(booking => booking.status === 'active');
-  const activeLots = lots.filter(lot => lot.is_active && lot.available_spots > 0);
+  const now = new Date();
+  const activeBooking = bookings.find(booking => booking.status === 'active' && new Date(booking.end_time) > now);
+  const activeLots = lots.filter(lot => lot.is_active);
 
   const handleBooking = async (event) => {
     event.preventDefault();
     if (!user?.universityId || !lotId) return;
-    const start = new Date();
+    const start = new Date(startTime);
     const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+    if (start.toDateString() !== now.toDateString() || end.toDateString() !== start.toDateString() || start < now) {
+      toast.error('Choose a future start and end time today.');
+      return;
+    }
     setSubmitting(true);
     try {
       const result = await createBooking({
@@ -96,25 +108,34 @@ export default function MemberPortalPage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-teal-400/20 bg-teal-400/10"><ParkingSquare className="h-4 w-4 text-teal-300" /></div>
               <div>
                 <h2 className="text-base font-[700] text-white">Parking availability</h2>
-                <p className="text-xs text-[var(--text-muted)]">Available spaces refresh automatically.</p>
+                <p className="text-xs text-[var(--text-muted)]">All parking slots, free spaces, and today’s booking times. Refreshes automatically.</p>
               </div>
             </div>
             {lots.length === 0 ? (
               <p className="rounded-xl border border-white/[0.06] p-5 text-sm text-[var(--text-muted)]">No parking lots are configured yet.</p>
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {lots.filter(lot => lot.is_active).map(lot => (
+                {lots.map(lot => (
                   <div key={lot.id} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-[650] text-white">{lot.name}</p>
                         <p className="mt-1 text-xs text-[var(--text-muted)]">{lot.location}</p>
                         <p className="mt-2 text-[10px] uppercase tracking-wider text-teal-300">{lot.lot_type}</p>
+                        {!lot.is_active && <p className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-rose-300">Currently unavailable</p>}
                       </div>
                       <span className="whitespace-nowrap rounded-full border border-teal-400/20 bg-teal-400/[0.08] px-2.5 py-1 text-xs font-[700] text-teal-200">
                         {lot.available_spots} free
                       </span>
                     </div>
+                    {lot.availability_schedule?.length > 0 ? (
+                      <p className="mt-3 border-t border-white/[0.06] pt-2 text-[11px] text-[var(--text-muted)]">
+                        Today’s bookings: {lot.availability_schedule.map(slot => `${new Date(slot.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}–${new Date(slot.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`).join(' · ')}
+                      </p>
+                    ) : (
+                      <p className="mt-3 border-t border-white/[0.06] pt-2 text-[11px] text-teal-200">{lot.is_active ? `${lot.available_spots} spaces available today — no bookings scheduled.` : 'Unavailable today.'}</p>
+                    )}
+                    {lot.available_spots === 0 && lot.next_available_time && <p className="mt-2 text-[11px] text-amber-200">Next space frees at {dateTime(lot.next_available_time)}</p>}
                   </div>
                 ))}
               </div>
@@ -126,15 +147,20 @@ export default function MemberPortalPage() {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-400/20 bg-blue-400/10"><CalendarClock className="h-4 w-4 text-blue-300" /></div>
               <div>
                 <h2 className="text-base font-[700] text-white">Book a space</h2>
-                <p className="text-xs text-[var(--text-muted)]">Choose a lot and duration.</p>
+                <p className="text-xs text-[var(--text-muted)]">Choose a start time from now through the next 8 hours.</p>
               </div>
             </div>
             {activeBooking ? (
               <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] p-4 text-sm text-amber-100">
-                You already have an active booking. A new booking is available after staff processes your exit.
+                <p className="font-semibold">You already have a booking.</p>
+                <p className="mt-1">You can book again after this booking ends at {dateTime(activeBooking.end_time)}.</p>
               </div>
             ) : (
               <form onSubmit={handleBooking} className="space-y-4">
+                <div className="field">
+                  <label className="label" htmlFor="member-start-time">Starting time (today)</label>
+                  <input id="member-start-time" type="time" className="input" value={inputTime(new Date(startTime))} min={inputTime(earliestStart())} max={inputTime(new Date(Math.min(latestStart().getTime(), new Date(endOfToday()).getTime())))} required onChange={e => setStartTime(todayAtTime(e.target.value))} />
+                </div>
                 <div className="field">
                   <label className="label" htmlFor="member-lot">Parking lot</label>
                   <select id="member-lot" className="input" value={lotId} required onChange={e => setLotId(e.target.value)}>
@@ -146,7 +172,7 @@ export default function MemberPortalPage() {
                 <div className="field">
                   <label className="label" htmlFor="member-duration">Duration</label>
                   <select id="member-duration" className="input" value={durationHours} onChange={e => setDurationHours(Number(e.target.value))}>
-                    {durations.map(hours => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hour' : 'hours'}</option>)}
+                    {durations.filter(hours => new Date(startTime).getTime() + hours * 3600000 <= new Date(`${new Date(startTime).toDateString()} 23:59`).getTime()).map(hours => <option key={hours} value={hours}>{hours} {hours === 1 ? 'hour' : 'hours'}</option>)}
                   </select>
                 </div>
                 <div className="field">

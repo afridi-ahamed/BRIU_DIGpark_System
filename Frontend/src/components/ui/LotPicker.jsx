@@ -143,9 +143,8 @@ export default function LotPicker({ lots = [], value, onChange, required }) {
                     <motion.button
                       key={lot.id}
                       type="button"
-                      whileHover={!isFull ? { x: 2 } : {}}
-                      onClick={() => { if (!isFull) { onChange(String(lot.id)); setOpen(false); } }}
-                      disabled={isFull}
+                      whileHover={{ x: 2 }}
+                      onClick={() => { onChange(String(lot.id)); setOpen(false); }}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -155,13 +154,13 @@ export default function LotPicker({ lots = [], value, onChange, required }) {
                         borderRadius: 10,
                         background: isSelected ? 'rgba(45,212,191,0.08)' : 'transparent',
                         border: `1px solid ${isSelected ? 'rgba(45,212,191,0.2)' : 'transparent'}`,
-                        cursor: isFull ? 'not-allowed' : 'pointer',
-                        opacity: isFull ? 0.45 : 1,
+                        cursor: 'pointer',
+                        opacity: 1,
                         transition: 'background 0.12s, border-color 0.12s',
                         marginBottom: 2,
                       }}
-                      onMouseEnter={e => { if (!isFull && !isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                      onMouseLeave={e => { if (!isFull && !isSelected) e.currentTarget.style.background = 'transparent'; }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
                     >
                       {/* Icon */}
                       <div style={{ width: 32, height: 32, borderRadius: 9, background: occupancyBg(lot), border: `1px solid ${color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -183,6 +182,8 @@ export default function LotPicker({ lots = [], value, onChange, required }) {
                         <p style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {lot.available_spots}/{lot.total_capacity} free · {lot.location || lot.lot_type}
                         </p>
+                        {isFull && lot.next_available_time && <p style={{ fontSize: 9, color: '#FCD34D', marginTop: 4 }}>Space from {new Date(lot.next_available_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>}
+                        {lot.availability_schedule?.length > 0 && <p style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>Today: {lot.availability_schedule.map(slot => `${new Date(slot.start_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}–${new Date(slot.end_time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`).join(', ')}</p>}
                       </div>
 
                       {/* Occupancy */}
