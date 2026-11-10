@@ -14,6 +14,9 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
+import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -28,12 +31,23 @@ load_dotenv(dotenv_path=_dotenv_path)
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-cjf=&%pl4ys#^=7bb3d+i8t^3z@ae@rleib8she8poblytv3vv'
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+
+if not SECRET_KEY:
+    if os.environ.get("VERCEL"):
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be configured on Vercel."
+        )
+    SECRET_KEY = "local-development-only-not-for-production"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    "briu-di-gpark-system-backend.vercel.app",
+    "localhost",
+    "127.0.0.1",
+]
 
 
 # Application definition
@@ -91,12 +105,35 @@ WSGI_APPLICATION = 'digital_parking.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+database_url = os.environ.get("DATABASE_URL")
+
+if database_url:
+    # Use hosted PostgreSQL when a connection URL is provided.
+    DATABASES = {
+        "default": dj_database_url.parse(
+            database_url,
+            conn_max_age=0,
+            ssl_require=True,
+        )
     }
-}
+
+    # Supports PostgreSQL connection pooling.
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
+
+elif os.environ.get("VERCEL"):
+    # Prevent accidentally using temporary SQLite storage on Vercel.
+    raise ImproperlyConfigured(
+        "DATABASE_URL must be configured on Vercel."
+    )
+
+else:
+    # Keep using the existing SQLite database locally.
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 
 # Password validation
@@ -168,9 +205,11 @@ SWAGGER_SETTINGS = {
 }
 
 # CORS
+CORS_ALLOW_ALL_ORIGINS = False
+
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'https://smartparking-beryl.vercel.app'
+    "https://briu-di-gpark-system.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
