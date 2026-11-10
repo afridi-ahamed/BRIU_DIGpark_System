@@ -22,6 +22,9 @@ dist-ssr
 *.sw?
 
 .vercel
+.env
+.env.*
+!.env.example
 .env*.local
 
 db.sqlite3

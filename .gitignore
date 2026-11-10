@@ -1,7 +1,21 @@
-     Backend/.env
-     Backend/db.sqlite3
-     Backend/.venv/
-     Frontend/node_modules/
-     .idea/
-     __pycache__/
-     *.py[cod]
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Frontend dependencies and builds
+node_modules/
+dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local databases and backups
+*.sqlite3*
+
+# Editor and macOS files
+.idea/
+.DS_Store
