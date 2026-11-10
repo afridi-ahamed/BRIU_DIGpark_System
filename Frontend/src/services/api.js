@@ -1,5 +1,5 @@
 
-const BASE_URL = 'https://briu-di-gpark-system-backend.vercel.app/api/';
+const BASE_URL = 'https://briu-di-gpark-system-backend.vercel.app/';
 
 function getToken() {
   return localStorage.getItem('parkingToken');
